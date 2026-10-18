@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>雾林小屋 · Three.js 程序化场景</title>
+<style>
+  :root {
+    --ink: #eceadc;
+    --ink-dim: rgba(236, 234, 220, 0.62);
+    --warm: #ffcf87;
+    --panel: rgba(22, 26, 19, 0.52);
+    --line: rgba(255, 255, 255, 0.14);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: #7f846c;
+    color: var(--ink);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none;
+  }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+  #scene:active { cursor: grabbing; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #brand {
+    position: absolute; left: 26px; top: 22px;
+    letter-spacing: 0.28em; font-size: 12px; font-weight: 600;
+    color: rgba(250, 246, 228, 0.9);
+    text-shadow: 0 1px 8px rgba(20, 26, 14, 0.6);
+  }
+  #brand small {
+    display: block; margin-top: 7px; letter-spacing: 0.12em;
+    font-size: 10px; font-weight: 400; color: rgba(250, 246, 228, 0.5);
+  }
+  #hint {
+    position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
+    font-size: 12px; color: rgba(250, 246, 228, 0.66); letter-spacing: 0.08em;
+    text-shadow: 0 1px 6px rgba(10, 14, 8, 0.8); white-space: nowrap;
+    transition: opacity 0.6s ease;
+  }
+  #bar {
+    position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 4px; padding: 7px 10px;
+    background: var(--panel);
+    border: 1px solid var(--line); border-radius: 999px;
+    backdrop-filter: blur(14px) saturate(1.1);
+    -webkit-backdrop-filter: blur(14px) saturate(1.1);
+    box-shadow: 0 6px 26px rgba(8, 12, 6, 0.35);
+    pointer-events: auto;
+  }
+  #bar button {
+    appearance: none; border: 0; background: transparent; cursor: pointer;
+    color: var(--ink-dim); font: inherit; font-size: 12.5px; letter-spacing: 0.05em;
+    padding: 8px 14px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background 0.2s ease, color 0.2s ease;
+    white-space: nowrap;
+  }
+  #bar button:hover { background: rgba(255, 255, 255, 0.08); color: var(--ink); }
+  #bar button.on { background: rgba(255, 220, 160, 0.16); color: var(--warm); }
+  #bar button em {
+    font-style: normal; font-size: 11px; color: var(--warm);
+    background: rgba(255, 207, 135, 0.13); padding: 1px 6px; border-radius: 999px;
+  }
+  #bar .sep { width: 1px; height: 16px; background: var(--line); margin: 0 6px; }
+  #bar .dot { width: 6px; height: 6px; border-radius: 50%; background: #8fae7a; box-shadow: 0 0 8px rgba(143, 174, 122, 0.8); }
+
+  #loading {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 18px;
+    background: radial-gradient(ellipse at 50% 42%, #8d9277 0%, #5c6250 55%, #3a4034 100%);
+    transition: opacity 0.7s ease; opacity: 1;
+  }
+  #loading.done { opacity: 0; pointer-events: none; }
+  #loading .ring {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 2px solid rgba(255, 245, 220, 0.18);
+    border-top-color: rgba(255, 226, 170, 0.9);
+    animation: spin 0.9s linear infinite;
+  }
+  #loading p {
+    margin: 0; font-size: 13px; letter-spacing: 0.3em; color: rgba(255, 248, 226, 0.78);
+    text-indent: 0.3em;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #err {
+    display: none; position: fixed; left: 16px; top: 16px; z-index: 30;
+    max-width: 60vw; max-height: 60vh; overflow: auto;
+    padding: 12px 16px; border-radius: 10px;
+    background: rgba(60, 8, 8, 0.82); border: 1px solid rgba(255, 120, 120, 0.4);
+    font: 12px/1.6 Consolas, "Courier New", monospace; color: #ffd7d7; white-space: pre-wrap;
+  }
+  @media (max-width: 640px) {
+    #bar { bottom: 20px; gap: 0; padding: 5px 7px; }
+    #bar button { padding: 7px 9px; font-size: 11.5px; }
+    #brand { left: 16px; top: 16px; }
+    #hint { display: none; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div id="hud">
+    <div id="brand">MISTY FOREST CABIN<small>three.js · 全程序化生成 · 无外部模型</small></div>
+    <div id="hint"></div>
+    <div id="bar">
+      <button data-mode="auto" title="电影感自动运镜"><span class="dot"></span>自动</button>
+      <button data-mode="free" title="自由漫游：拖动鼠标 + WASD">漫游</button>
+      <span class="sep"></span>
+      <button data-act="fog">雾重 <em id="fogLabel">中</em></button>
+      <button data-act="cam">机位 <em id="camLabel">远景</em></button>
+      <span class="sep"></span>
+      <button data-act="shot">截图</button>
+      <button data-act="fullscreen">全屏</button>
+    </div>
+  </div>
+
+  <div id="loading"><div class="ring"></div><p>正在生长这片森林</p></div>
+  <pre id="err"></pre>
+
+  <script src="./vendor/three.min.js"></script>
+  <script src="./src/textures.js"></script>
+  <script src="./src/main.js"></script>
+</body>
+</html>
